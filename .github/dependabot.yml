@@ -6,6 +6,12 @@ updates:
       interval: weekly
     allow:
       - dependency-type: all
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-type: all
   - package-ecosystem: docker
     directory: /
     schedule:
