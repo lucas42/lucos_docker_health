@@ -31,6 +31,25 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 
 `SYSTEM`, `HOSTDOMAIN`, and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
 
+## Local testing
+
+Always build and run the container locally before pushing. The full CI build+deploy cycle takes 10+ minutes; a local test catches startup failures in ~2 minutes.
+
+```bash
+# Build
+docker build -t lucos_docker_health_local .
+
+# Run (mirrors production docker-compose)
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e SYSTEM=lucos_docker_health \
+  -e HOSTDOMAIN=test.local \
+  -e SCHEDULE_TRACKER_ENDPOINT=http://localhost:9999 \
+  lucos_docker_health_local
+```
+
+Expected output: the binary starts, connects to the docker socket, and attempts to POST to schedule_tracker. A connection-refused error on the dummy endpoint is fine — it means everything up to the HTTP call worked. Any other error on startup is a problem.
+
 ## Tests
 
 There are no automated tests at this time. The binary is small and straightforward; coverage is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
