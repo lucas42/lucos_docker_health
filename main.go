@@ -102,7 +102,7 @@ func reportStatus(httpClient *http.Client, url, system string, frequency int, he
 
 func main() {
 	system := getEnvRequired("SYSTEM")
-	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_URL")
+	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 
 	frequency := 60
 	if val := os.Getenv("REPORT_FREQUENCY"); val != "" {

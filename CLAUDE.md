@@ -12,7 +12,7 @@ Go. Single binary, no CGO (`CGO_ENABLED=0`), suitable for a scratch/distroless i
 
 ## Architecture
 
-Push model: the binary polls Docker, then POSTs to `SCHEDULE_TRACKER_URL` with a JSON payload containing `system`, `frequency`, and `status` (`"success"` or `"error"`). No inbound ports. No state persisted.
+Push model: the binary polls Docker, then POSTs to `SCHEDULE_TRACKER_ENDPOINT` with a JSON payload containing `system`, `frequency`, and `status` (`"success"` or `"error"`). No inbound ports. No state persisted.
 
 Containers without a configured healthcheck are ignored entirely.
 
@@ -25,10 +25,10 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 | Variable | Required | Description |
 |---|---|---|
 | `SYSTEM` | Yes | Identifier sent to schedule_tracker (e.g. `lucos_docker_health_avalon`) |
-| `SCHEDULE_TRACKER_URL` | Yes | Full URL to the `/report-status` endpoint |
+| `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/report-status` endpoint |
 | `REPORT_FREQUENCY` | No | Reporting interval in seconds (default: 60) |
 
-`SYSTEM` and `SCHEDULE_TRACKER_URL` are provided by lucos_creds with per-host values.
+`SYSTEM` and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
 
 ## Tests
 

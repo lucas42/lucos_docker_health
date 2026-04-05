@@ -56,7 +56,7 @@ The reporting frequency of 60 seconds gives schedule_tracker a 3-minute stale th
 Same Docker image on every host. Per-host configuration is limited to:
 
 - `SYSTEM` environment variable (e.g. `lucos_docker_health_avalon`)
-- `SCHEDULE_TRACKER_URL` environment variable (the `/report-status` endpoint, from lucos_creds)
+- `SCHEDULE_TRACKER_ENDPOINT` environment variable (the `/report-status` endpoint, from lucos_creds)
 
 The container mounts the Docker socket read-only (`/var/run/docker.sock:/var/run/docker.sock:ro`) and runs with no other volumes. No state is persisted.
 
