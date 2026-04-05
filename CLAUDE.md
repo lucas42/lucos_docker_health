@@ -24,11 +24,12 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 
 | Variable | Required | Description |
 |---|---|---|
-| `SYSTEM` | Yes | Identifier sent to schedule_tracker (e.g. `lucos_docker_health_avalon`) |
+| `SYSTEM` | Yes | Base system name (e.g. `lucos_docker_health`) — combined with `HOSTDOMAIN` prefix to form the per-host identifier |
+| `HOSTDOMAIN` | Yes | Host domain (e.g. `avalon.s.l42.eu`) — prefix before first `.` is appended to `SYSTEM` (e.g. `lucos_docker_health_avalon`) |
 | `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/report-status` endpoint |
 | `REPORT_FREQUENCY` | No | Reporting interval in seconds (default: 60) |
 
-`SYSTEM` and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
+`SYSTEM`, `HOSTDOMAIN`, and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
 
 ## Tests
 
