@@ -64,7 +64,7 @@ The container mounts the Docker socket read-only (`/var/run/docker.sock:/var/run
 
 - Docker socket mounted `:ro` (prevents replacing or deleting the socket file; does not restrict API calls, but limits filesystem-level tampering)
 - Application code calls only read-only Docker API endpoints (`/containers/json`)
-- Container runs as a non-root user
+- Container runs as root — the original design specified non-root execution, but Docker socket access is root-equivalent regardless of UID, and the `docker` group's numeric GID varies across hosts, making non-root impractical on distroless without adding operational complexity that doesn't improve security. The distroless base image is retained as the primary security control (no shell, no package manager, minimal attack surface).
 - Minimal/distroless base image -- no Docker CLI, no shell
 - No `--privileged` flag, no extra capabilities
 

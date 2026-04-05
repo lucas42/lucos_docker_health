@@ -12,8 +12,6 @@ FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /go/src/lucos_docker_health/lucos_docker_health /lucos_docker_health
 
-USER nonroot
-
 HEALTHCHECK CMD ["/lucos_docker_health", "--healthcheck"]
 
 CMD ["/lucos_docker_health"]
