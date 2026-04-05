@@ -50,6 +50,16 @@ docker run --rm \
 
 Expected output: the binary starts, connects to the docker socket, and attempts to POST to schedule_tracker. A connection-refused error on the dummy endpoint is fine — it means everything up to the HTTP call worked. Any other error on startup is a problem.
 
+## Known limitations
+
+### `restart: always` does not restart on `unhealthy` status
+
+Docker's `restart: always` policy only restarts a container when it exits. If the binary deadlocks without crashing, the container stays running indefinitely — it will be reported as `unhealthy` (via the heartbeat healthcheck) but will not be automatically restarted.
+
+In this scenario, the schedule_tracker stale-check provides alerting coverage: if the binary stops reporting, the check goes stale after 180 seconds (3× the 60s frequency) and monitoring flags it. Manual intervention (e.g. `docker restart lucos_docker_health_app`) is then required.
+
+This is a known, accepted limitation — a deadlock-without-exit failure mode is low probability for a simple poll-and-POST binary.
+
 ## Tests
 
 There are no automated tests at this time. The binary is small and straightforward; coverage is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
