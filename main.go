@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 const heartbeatFile = "/tmp/heartbeat"
@@ -76,20 +75,20 @@ type statusReport struct {
 const stuckStartingThreshold = 5 * time.Minute
 
 func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string) {
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{})
+	result, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return false, fmt.Sprintf("Failed to list containers: %v", err)
 	}
 
 	var unhealthy []string
 	var stuckStarting []string
-	for _, c := range containers {
-		info, err := dockerClient.ContainerInspect(ctx, c.ID)
+	for _, c := range result.Items {
+		info, err := dockerClient.ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
 		if err != nil {
 			log.Printf("Warning: failed to inspect container %s: %v", c.ID[:12], err)
 			continue
 		}
-		if info.State.Health == nil || info.State.Health.Status == "none" {
+		if info.Container.State.Health == nil || info.Container.State.Health.Status == "none" {
 			// No healthcheck configured — skip
 			continue
 		}
@@ -97,11 +96,11 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
 		}
-		switch info.State.Health.Status {
+		switch info.Container.State.Health.Status {
 		case "unhealthy":
 			unhealthy = append(unhealthy, name)
 		case "starting":
-			startedAt, err := time.Parse(time.RFC3339Nano, info.State.StartedAt)
+			startedAt, err := time.Parse(time.RFC3339Nano, info.Container.State.StartedAt)
 			if err != nil {
 				log.Printf("Warning: failed to parse StartedAt for container %s: %v", name, err)
 				continue
@@ -174,7 +173,7 @@ func main() {
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 	frequency := getFrequency()
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Fatalf("Failed to create Docker client: %v", err)
 	}
