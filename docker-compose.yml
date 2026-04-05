@@ -1,0 +1,10 @@
+services:
+  app:
+    image: lucas42/lucos_docker_health
+    container_name: lucos_docker_health
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - SYSTEM
+      - SCHEDULE_TRACKER_URL
