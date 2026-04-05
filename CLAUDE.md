@@ -53,3 +53,7 @@ Expected output: the binary starts, connects to the docker socket, and attempts 
 ## Tests
 
 There are no automated tests at this time. The binary is small and straightforward; coverage is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
+
+## Architectural reviews
+
+Architectural reviews are in `docs/reviews/`.
