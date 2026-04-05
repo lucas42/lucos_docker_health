@@ -126,13 +126,16 @@ func main() {
 	ticker := time.NewTicker(time.Duration(frequency) * time.Second)
 	defer ticker.Stop()
 
-	// Run once immediately, then on each tick
-	ctx := context.Background()
-	healthy, message := checkHealth(ctx, dockerClient)
-	reportStatus(httpClient, scheduleTrackerURL, system, frequency, healthy, message)
-
-	for range ticker.C {
-		healthy, message = checkHealth(ctx, dockerClient)
+	runCheck := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		healthy, message := checkHealth(ctx, dockerClient)
 		reportStatus(httpClient, scheduleTrackerURL, system, frequency, healthy, message)
+	}
+
+	// Run once immediately, then on each tick
+	runCheck()
+	for range ticker.C {
+		runCheck()
 	}
 }
