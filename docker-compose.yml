@@ -4,6 +4,8 @@ services:
     image: lucas42/lucos_docker_health_app
     container_name: lucos_docker_health_app
     restart: always
+    group_add:
+      - "docker"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
