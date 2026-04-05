@@ -101,7 +101,10 @@ func reportStatus(httpClient *http.Client, url, system string, frequency int, he
 }
 
 func main() {
-	system := getEnvRequired("SYSTEM")
+	systemBase := getEnvRequired("SYSTEM")
+	hostDomain := getEnvRequired("HOSTDOMAIN")
+	hostPrefix := strings.SplitN(hostDomain, ".", 2)[0]
+	system := systemBase + "_" + hostPrefix
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 
 	frequency := 60
