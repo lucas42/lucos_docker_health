@@ -1,0 +1,32 @@
+version: 2.1
+orbs:
+  lucos: lucos/deploy@0
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - lucos/build-multiplatform
+      - lucos/deploy-avalon:
+          serial-group: << pipeline.project.slug >>/deploy-avalon
+          requires:
+            - lucos/build-multiplatform
+          filters:
+            branches:
+              only:
+                - main
+      - lucos/deploy-salvare:
+          serial-group: << pipeline.project.slug >>/deploy-salvare
+          requires:
+            - lucos/build-multiplatform
+          filters:
+            branches:
+              only:
+                - main
+      - lucos/deploy-xwing:
+          serial-group: << pipeline.project.slug >>/deploy-xwing
+          requires:
+            - lucos/build-multiplatform
+          filters:
+            branches:
+              only:
+                - main
