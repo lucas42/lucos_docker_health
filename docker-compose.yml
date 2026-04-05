@@ -6,6 +6,11 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["/lucos_docker_health", "--healthcheck"]
+      interval: 65s
+      timeout: 5s
+      retries: 3
     environment:
       - SYSTEM
       - HOSTDOMAIN

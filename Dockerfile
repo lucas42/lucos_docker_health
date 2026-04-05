@@ -14,4 +14,6 @@ COPY --from=builder /go/src/lucos_docker_health/lucos_docker_health /lucos_docke
 
 USER nonroot
 
+HEALTHCHECK CMD ["/lucos_docker_health", "--healthcheck"]
+
 CMD ["/lucos_docker_health"]

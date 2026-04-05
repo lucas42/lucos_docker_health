@@ -16,12 +16,54 @@ import (
 	"github.com/docker/docker/client"
 )
 
+const heartbeatFile = "/tmp/heartbeat"
+
 func getEnvRequired(key string) string {
 	val := os.Getenv(key)
 	if val == "" {
 		log.Fatalf("Required environment variable %s is not set", key)
 	}
 	return val
+}
+
+func getFrequency() int {
+	frequency := 60
+	if val := os.Getenv("REPORT_FREQUENCY"); val != "" {
+		parsed, err := strconv.Atoi(val)
+		if err != nil {
+			log.Fatalf("Invalid REPORT_FREQUENCY value %q: %v", val, err)
+		}
+		frequency = parsed
+	}
+	return frequency
+}
+
+func runHealthcheck() {
+	frequency := getFrequency()
+	data, err := os.ReadFile(heartbeatFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Healthcheck failed: cannot read heartbeat file: %v\n", err)
+		os.Exit(1)
+	}
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Healthcheck failed: invalid heartbeat timestamp: %v\n", err)
+		os.Exit(1)
+	}
+	age := time.Since(time.Unix(ts, 0))
+	threshold := time.Duration(frequency*2) * time.Second
+	if age > threshold {
+		fmt.Fprintf(os.Stderr, "Healthcheck failed: last report was %s ago (threshold %s)\n", age.Round(time.Second), threshold)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func writeHeartbeat() {
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	if err := os.WriteFile(heartbeatFile, []byte(ts), 0644); err != nil {
+		log.Printf("Warning: failed to write heartbeat file: %v", err)
+	}
 }
 
 type statusReport struct {
@@ -101,20 +143,16 @@ func reportStatus(httpClient *http.Client, url, system string, frequency int, he
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
+		runHealthcheck()
+	}
+
 	systemBase := getEnvRequired("SYSTEM")
 	hostDomain := getEnvRequired("HOSTDOMAIN")
 	hostPrefix := strings.SplitN(hostDomain, ".", 2)[0]
 	system := systemBase + "_" + hostPrefix
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
-
-	frequency := 60
-	if val := os.Getenv("REPORT_FREQUENCY"); val != "" {
-		parsed, err := strconv.Atoi(val)
-		if err != nil {
-			log.Fatalf("Invalid REPORT_FREQUENCY value %q: %v", val, err)
-		}
-		frequency = parsed
-	}
+	frequency := getFrequency()
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -134,6 +172,7 @@ func main() {
 		defer cancel()
 		healthy, message := checkHealth(ctx, dockerClient)
 		reportStatus(httpClient, scheduleTrackerURL, system, frequency, healthy, message)
+		writeHeartbeat()
 	}
 
 	// Run once immediately, then on each tick
