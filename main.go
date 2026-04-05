@@ -73,6 +73,8 @@ type statusReport struct {
 	Message   string `json:"message,omitempty"`
 }
 
+const stuckStartingThreshold = 5 * time.Minute
+
 func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string) {
 	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
@@ -80,6 +82,7 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 	}
 
 	var unhealthy []string
+	var stuckStarting []string
 	for _, c := range containers {
 		info, err := dockerClient.ContainerInspect(ctx, c.ID)
 		if err != nil {
@@ -90,17 +93,34 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 			// No healthcheck configured — skip
 			continue
 		}
-		if info.State.Health.Status == "unhealthy" {
-			name := c.ID[:12]
-			if len(c.Names) > 0 {
-				name = strings.TrimPrefix(c.Names[0], "/")
-			}
+		name := c.ID[:12]
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		switch info.State.Health.Status {
+		case "unhealthy":
 			unhealthy = append(unhealthy, name)
+		case "starting":
+			startedAt, err := time.Parse(time.RFC3339Nano, info.State.StartedAt)
+			if err != nil {
+				log.Printf("Warning: failed to parse StartedAt for container %s: %v", name, err)
+				continue
+			}
+			if time.Since(startedAt) > stuckStartingThreshold {
+				stuckStarting = append(stuckStarting, name)
+			}
 		}
 	}
 
+	var parts []string
 	if len(unhealthy) > 0 {
-		return false, "Unhealthy containers: " + strings.Join(unhealthy, ", ")
+		parts = append(parts, "Unhealthy containers: "+strings.Join(unhealthy, ", "))
+	}
+	if len(stuckStarting) > 0 {
+		parts = append(parts, "Stuck starting: "+strings.Join(stuckStarting, ", "))
+	}
+	if len(parts) > 0 {
+		return false, strings.Join(parts, ". ")
 	}
 	return true, ""
 }
