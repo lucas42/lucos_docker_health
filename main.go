@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/client"
 )
 
@@ -83,8 +85,15 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 	var unhealthy []string
 	var stuckStarting []string
 	for _, c := range result.Items {
-		info, err := dockerClient.ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
+		inspectCtx, inspectCancel := context.WithTimeout(ctx, 5*time.Second)
+		info, err := dockerClient.ContainerInspect(inspectCtx, c.ID, client.ContainerInspectOptions{})
+		inspectCancel()
 		if err != nil {
+			if errdefs.IsNotFound(err) || errors.Is(err, context.DeadlineExceeded) {
+				// Container was removed between list and inspect (e.g. during a deploy
+				// wave) — skip silently; the next cycle will have a fresh list.
+				continue
+			}
 			log.Printf("Warning: failed to inspect container %s: %v", c.ID[:12], err)
 			continue
 		}
