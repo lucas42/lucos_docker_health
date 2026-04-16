@@ -9,6 +9,8 @@ COPY main.go .
 RUN CGO_ENABLED=0 go build -o lucos_docker_health .
 
 FROM gcr.io/distroless/static-debian12
+ARG VERSION
+ENV VERSION=$VERSION
 
 COPY --from=builder /go/src/lucos_docker_health/lucos_docker_health /lucos_docker_health
 
