@@ -28,6 +28,8 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 | `HOSTDOMAIN` | Yes | Host domain (e.g. `avalon.s.l42.eu`) — prefix before first `.` is appended to `SYSTEM` (e.g. `lucos_docker_health_avalon`) |
 | `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/report-status` endpoint |
 | `REPORT_FREQUENCY` | No | Reporting interval in seconds (default: 60) |
+| `MEMORY_WARN_THRESHOLD_MB` | No | Alert when host available RAM drops below this value in MB (default: 500) |
+| `SWAP_WARN_THRESHOLD_MB` | No | Alert when host swap in use exceeds this value in MB (default: 1024) |
 
 `SYSTEM`, `HOSTDOMAIN`, and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
 
