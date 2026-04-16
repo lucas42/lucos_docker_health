@@ -18,6 +18,9 @@ import (
 )
 
 const heartbeatFile = "/tmp/heartbeat"
+const memInfoPath = "/host/proc/meminfo"
+const defaultMemoryWarnThresholdMB = 500
+const defaultSwapWarnThresholdMB = 1024
 
 func getEnvRequired(key string) string {
 	val := os.Getenv(key)
@@ -37,6 +40,17 @@ func getFrequency() int {
 		frequency = parsed
 	}
 	return frequency
+}
+
+func getThresholdMB(key string, defaultVal int) int {
+	if val := os.Getenv(key); val != "" {
+		parsed, err := strconv.Atoi(val)
+		if err != nil {
+			log.Fatalf("Invalid %s value %q: %v", key, val, err)
+		}
+		return parsed
+	}
+	return defaultVal
 }
 
 func runHealthcheck() {
@@ -133,6 +147,53 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 	return true, ""
 }
 
+// parseMemInfo reads a /proc/meminfo-formatted file and returns a map of
+// field name to value in kilobytes.
+func parseMemInfo(path string) (map[string]int64, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]int64)
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(parts[0], ":")
+		val, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		result[key] = val // values are in kB
+	}
+	return result, nil
+}
+
+// checkMemory reads /host/proc/meminfo and returns whether the host has
+// sufficient available memory and acceptable swap usage.
+func checkMemory(memoryWarnMB, swapWarnMB int) (bool, string) {
+	info, err := parseMemInfo(memInfoPath)
+	if err != nil {
+		return false, fmt.Sprintf("Failed to read %s: %v", memInfoPath, err)
+	}
+
+	memAvailableMB := info["MemAvailable"] / 1024
+	swapUsedMB := (info["SwapTotal"] - info["SwapFree"]) / 1024
+
+	var problems []string
+	if memAvailableMB < int64(memoryWarnMB) {
+		problems = append(problems, fmt.Sprintf("Low available memory: %dMB (threshold %dMB)", memAvailableMB, memoryWarnMB))
+	}
+	if swapUsedMB > int64(swapWarnMB) {
+		problems = append(problems, fmt.Sprintf("High swap usage: %dMB (threshold %dMB)", swapUsedMB, swapWarnMB))
+	}
+	if len(problems) > 0 {
+		return false, strings.Join(problems, ". ")
+	}
+	return true, ""
+}
+
 func reportStatus(httpClient *http.Client, url, system string, frequency int, healthy bool, message string) {
 	report := statusReport{
 		System:    system,
@@ -179,8 +240,11 @@ func main() {
 	hostDomain := getEnvRequired("HOSTDOMAIN")
 	hostPrefix := strings.SplitN(hostDomain, ".", 2)[0]
 	system := systemBase + "_" + hostPrefix
+	memorySystem := systemBase + "_memory_" + hostPrefix
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 	frequency := getFrequency()
+	memoryWarnMB := getThresholdMB("MEMORY_WARN_THRESHOLD_MB", defaultMemoryWarnThresholdMB)
+	swapWarnMB := getThresholdMB("SWAP_WARN_THRESHOLD_MB", defaultSwapWarnThresholdMB)
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -200,6 +264,8 @@ func main() {
 		defer cancel()
 		healthy, message := checkHealth(ctx, dockerClient)
 		reportStatus(httpClient, scheduleTrackerURL, system, frequency, healthy, message)
+		memHealthy, memMessage := checkMemory(memoryWarnMB, swapWarnMB)
+		reportStatus(httpClient, scheduleTrackerURL, memorySystem, frequency, memHealthy, memMessage)
 		writeHeartbeat()
 	}
 
