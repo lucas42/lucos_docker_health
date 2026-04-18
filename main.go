@@ -53,6 +53,14 @@ func getThresholdMB(key string, defaultVal int) int {
 	return defaultVal
 }
 
+// getHostThresholdMB returns the threshold for the given base key, preferring
+// a host-specific override (<baseKey>_<HOSTPREFIX>) when set. Hosts share a
+// single production envfile, so this is how per-host calibration is expressed.
+func getHostThresholdMB(baseKey, hostPrefix string, defaultVal int) int {
+	hostKey := baseKey + "_" + strings.ToUpper(hostPrefix)
+	return getThresholdMB(hostKey, getThresholdMB(baseKey, defaultVal))
+}
+
 func runHealthcheck() {
 	frequency := getFrequency()
 	data, err := os.ReadFile(heartbeatFile)
@@ -243,8 +251,8 @@ func main() {
 	memorySystem := systemBase + "_memory_" + hostPrefix
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 	frequency := getFrequency()
-	memoryWarnMB := getThresholdMB("MEMORY_WARN_THRESHOLD_MB", defaultMemoryWarnThresholdMB)
-	swapWarnMB := getThresholdMB("SWAP_WARN_THRESHOLD_MB", defaultSwapWarnThresholdMB)
+	memoryWarnMB := getHostThresholdMB("MEMORY_WARN_THRESHOLD_MB", hostPrefix, defaultMemoryWarnThresholdMB)
+	swapWarnMB := getHostThresholdMB("SWAP_WARN_THRESHOLD_MB", hostPrefix, defaultSwapWarnThresholdMB)
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
