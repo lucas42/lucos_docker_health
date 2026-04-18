@@ -28,19 +28,6 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 | `HOSTDOMAIN` | Yes | Host domain (e.g. `avalon.s.l42.eu`) — prefix before first `.` is appended to `SYSTEM` (e.g. `lucos_docker_health_avalon`) |
 | `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/report-status` endpoint |
 | `REPORT_FREQUENCY` | No | Reporting interval in seconds (default: 60) |
-| `MEMORY_WARN_THRESHOLD_MB` | No | Alert when host available RAM drops below this value in MB (default: 500) |
-| `SWAP_WARN_THRESHOLD_MB` | No | Alert when host swap in use exceeds this value in MB (default: 1024) |
-
-### Per-host threshold overrides
-
-The production envfile is shared across every Docker host, but hosts differ in size (e.g. xwing is a 906MB Raspberry Pi 3; avalon/salvare are larger VMs). To calibrate thresholds per host, set a suffixed variant:
-
-| Pattern | Example |
-|---|---|
-| `MEMORY_WARN_THRESHOLD_MB_<HOSTPREFIX>` | `MEMORY_WARN_THRESHOLD_MB_XWING=300` |
-| `SWAP_WARN_THRESHOLD_MB_<HOSTPREFIX>` | `SWAP_WARN_THRESHOLD_MB_XWING=512` |
-
-`<HOSTPREFIX>` is the uppercased first component of `HOSTDOMAIN` (e.g. `xwing` for `xwing.local.l42.eu`). Resolution order on each host: host-specific variant → shared variant → compiled-in default.
 
 `SYSTEM`, `HOSTDOMAIN`, and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
 

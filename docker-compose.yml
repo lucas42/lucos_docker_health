@@ -6,7 +6,6 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /proc/meminfo:/host/proc/meminfo:ro
     healthcheck:
       test: ["CMD", "/lucos_docker_health", "--healthcheck"]
       interval: 65s
@@ -16,5 +15,3 @@ services:
       - SYSTEM
       - HOSTDOMAIN
       - SCHEDULE_TRACKER_ENDPOINT
-      - MEMORY_WARN_THRESHOLD_MB
-      - SWAP_WARN_THRESHOLD_MB
