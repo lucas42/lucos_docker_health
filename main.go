@@ -140,6 +140,7 @@ func reportStatus(httpClient *http.Client, url, system string, frequency int, he
 		Status:    "success",
 	}
 	if !healthy {
+		log.Printf("Reporting unhealthy: %s", message)
 		report.Status = "error"
 		report.Message = message
 	}
