@@ -24,9 +24,9 @@ The Docker socket is mounted read-only (`/var/run/docker.sock:/var/run/docker.so
 
 | Variable | Required | Description |
 |---|---|---|
-| `SYSTEM` | Yes | Base system name (e.g. `lucos_docker_health`) — combined with `HOSTDOMAIN` prefix to form the per-host identifier |
-| `HOSTDOMAIN` | Yes | Host domain (e.g. `avalon.s.l42.eu`) — prefix before first `.` is appended to `SYSTEM` (e.g. `lucos_docker_health_avalon`) |
-| `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/report-status` endpoint |
+| `SYSTEM` | Yes | Owning system name (e.g. `lucos_docker_health`) — sent as `system` in the v2 schedule_tracker payload |
+| `HOSTDOMAIN` | Yes | Host domain (e.g. `avalon.s.l42.eu`) — prefix before first `.` is used as `job_name` in the v2 payload (e.g. `avalon`) |
+| `SCHEDULE_TRACKER_ENDPOINT` | Yes | Full URL to the `/v2/report-status` endpoint |
 | `REPORT_FREQUENCY` | No | Reporting interval in seconds (default: 60) |
 
 `SYSTEM`, `HOSTDOMAIN`, and `SCHEDULE_TRACKER_ENDPOINT` are provided by lucos_creds with per-host values.
@@ -44,7 +44,7 @@ docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e SYSTEM=lucos_docker_health \
   -e HOSTDOMAIN=test.local \
-  -e SCHEDULE_TRACKER_ENDPOINT=http://localhost:9999 \
+  -e SCHEDULE_TRACKER_ENDPOINT=http://localhost:9999/v2/report-status \
   lucos_docker_health_local
 ```
 

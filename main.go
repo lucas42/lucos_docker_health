@@ -69,6 +69,7 @@ func writeHeartbeat() {
 
 type statusReport struct {
 	System    string `json:"system"`
+	JobName   string `json:"job_name"`
 	Frequency int    `json:"frequency"`
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`
@@ -133,9 +134,10 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 	return true, ""
 }
 
-func reportStatus(httpClient *http.Client, url, system string, frequency int, healthy bool, message string) {
+func reportStatus(httpClient *http.Client, url, system, jobName string, frequency int, healthy bool, message string) {
 	report := statusReport{
 		System:    system,
+		JobName:   jobName,
 		Frequency: frequency,
 		Status:    "success",
 	}
@@ -157,7 +159,7 @@ func reportStatus(httpClient *http.Client, url, system string, frequency int, he
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", system)
+	req.Header.Set("User-Agent", system+"_"+jobName)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -176,10 +178,9 @@ func main() {
 		runHealthcheck()
 	}
 
-	systemBase := getEnvRequired("SYSTEM")
+	system := getEnvRequired("SYSTEM")
 	hostDomain := getEnvRequired("HOSTDOMAIN")
-	hostPrefix := strings.SplitN(hostDomain, ".", 2)[0]
-	system := systemBase + "_" + hostPrefix
+	jobName := strings.SplitN(hostDomain, ".", 2)[0]
 	scheduleTrackerURL := getEnvRequired("SCHEDULE_TRACKER_ENDPOINT")
 	frequency := getFrequency()
 
@@ -191,7 +192,7 @@ func main() {
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 
-	log.Printf("Starting lucos_docker_health — system=%s, frequency=%ds", system, frequency)
+	log.Printf("Starting lucos_docker_health — system=%s, job_name=%s, frequency=%ds", system, jobName, frequency)
 
 	ticker := time.NewTicker(time.Duration(frequency) * time.Second)
 	defer ticker.Stop()
@@ -200,7 +201,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		healthy, message := checkHealth(ctx, dockerClient)
-		reportStatus(httpClient, scheduleTrackerURL, system, frequency, healthy, message)
+		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message)
 		writeHeartbeat()
 	}
 
