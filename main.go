@@ -78,10 +78,13 @@ type statusReport struct {
 const stuckStartingThreshold = 5 * time.Minute
 
 func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string) {
+	log.Printf("Listing containers...")
+	listStart := time.Now()
 	result, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return false, fmt.Sprintf("Failed to list containers: %v", err)
 	}
+	log.Printf("Listed %d containers in %dms", len(result.Items), time.Since(listStart).Milliseconds())
 
 	var unhealthy []string
 	var stuckStarting []string
@@ -134,7 +137,7 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 	return true, ""
 }
 
-func reportStatus(httpClient *http.Client, url, system, jobName string, frequency int, healthy bool, message string) {
+func reportStatus(httpClient *http.Client, url, system, jobName string, frequency int, healthy bool, message string, age int) {
 	report := statusReport{
 		System:    system,
 		JobName:   jobName,
@@ -161,9 +164,10 @@ func reportStatus(httpClient *http.Client, url, system, jobName string, frequenc
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", system+"_"+jobName)
 
+	log.Printf("Heartbeat to %s: status=%s, age=%ds", url, report.Status, age)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		log.Printf("Failed to report status to schedule_tracker: %v", err)
+		log.Printf("Heartbeat failed: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -198,10 +202,11 @@ func main() {
 	defer ticker.Stop()
 
 	runCheck := func() {
+		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		healthy, message := checkHealth(ctx, dockerClient)
-		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message)
+		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message, int(time.Since(start).Seconds()))
 		writeHeartbeat()
 	}
 
