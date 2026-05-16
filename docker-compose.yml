@@ -15,3 +15,4 @@ services:
       - SYSTEM
       - HOSTDOMAIN
       - SCHEDULE_TRACKER_ENDPOINT
+      - REPORT_FREQUENCY
