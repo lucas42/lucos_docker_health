@@ -62,7 +62,7 @@ This is a known, accepted limitation — a deadlock-without-exit failure mode is
 
 ## Tests
 
-There are no automated tests at this time. The binary is small and straightforward; coverage is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
+`crashloop_test.go` covers the crash-loop detector's state machine (`go test ./...`), run in CI via a `test` job. The rest of the binary is small and straightforward; coverage there is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
 
 ## Architectural reviews
 
