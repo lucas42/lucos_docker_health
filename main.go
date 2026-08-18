@@ -77,7 +77,55 @@ type statusReport struct {
 
 const stuckStartingThreshold = 5 * time.Minute
 
-func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string) {
+// crashLoopStreakThreshold is how many consecutive polls must see a rising
+// RestartCount before a container is flagged as crash-looping. Requiring two
+// avoids flagging a fresh container after a deploy (RestartCount resets to 0)
+// or a one-off crash-and-recover (bumps the count once).
+const crashLoopStreakThreshold = 2
+
+type restartState struct {
+	lastCount    int
+	risingStreak int
+}
+
+// crashLoopDetector tracks each container's RestartCount across polls.
+// A container whose healthcheck oscillates fast enough can defeat both the
+// "unhealthy" and "stuck starting" checks — a restarting-every-few-seconds
+// container never accumulates 5 minutes of "starting", and rarely holds
+// "unhealthy" long enough to be sampled (lucas42/lucos_docker_health#108).
+// RestartCount is monotonic, so comparing it between polls gives the same
+// answer regardless of which instant is sampled.
+type crashLoopDetector struct {
+	state map[string]restartState
+}
+
+func newCrashLoopDetector() *crashLoopDetector {
+	return &crashLoopDetector{state: make(map[string]restartState)}
+}
+
+// observe records this poll's RestartCount for containerID and reports
+// whether it should be considered crash-looping.
+func (d *crashLoopDetector) observe(containerID string, restartCount int) bool {
+	prev, seen := d.state[containerID]
+	streak := 0
+	if seen && restartCount > prev.lastCount {
+		streak = prev.risingStreak + 1
+	}
+	d.state[containerID] = restartState{lastCount: restartCount, risingStreak: streak}
+	return streak >= crashLoopStreakThreshold
+}
+
+// prune drops state for containers not seen in the current poll, so the map
+// doesn't grow unbounded as containers are replaced across deploys.
+func (d *crashLoopDetector) prune(present map[string]struct{}) {
+	for id := range d.state {
+		if _, ok := present[id]; !ok {
+			delete(d.state, id)
+		}
+	}
+}
+
+func checkHealth(ctx context.Context, dockerClient *client.Client, detector *crashLoopDetector) (bool, string) {
 	log.Printf("Listing containers...")
 	listStart := time.Now()
 	result, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{})
@@ -88,7 +136,14 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 
 	var unhealthy []string
 	var stuckStarting []string
+	var crashLooping []string
+	present := make(map[string]struct{})
 	for _, c := range result.Items {
+		// Seed from the list, not after inspect succeeds — a transient inspect
+		// failure (e.g. context.DeadlineExceeded under daemon load, which a real
+		// crash loop can itself cause) must not look like container removal and
+		// prune this container's accumulating crash-loop streak.
+		present[c.ID] = struct{}{}
 		inspectCtx, inspectCancel := context.WithTimeout(ctx, 5*time.Second)
 		info, err := dockerClient.ContainerInspect(inspectCtx, c.ID, client.ContainerInspectOptions{})
 		inspectCancel()
@@ -109,6 +164,9 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
 		}
+		if detector.observe(c.ID, info.Container.RestartCount) {
+			crashLooping = append(crashLooping, name)
+		}
 		switch info.Container.State.Health.Status {
 		case "unhealthy":
 			unhealthy = append(unhealthy, name)
@@ -123,10 +181,14 @@ func checkHealth(ctx context.Context, dockerClient *client.Client) (bool, string
 			}
 		}
 	}
+	detector.prune(present)
 
 	var parts []string
 	if len(unhealthy) > 0 {
 		parts = append(parts, "Unhealthy containers: "+strings.Join(unhealthy, ", "))
+	}
+	if len(crashLooping) > 0 {
+		parts = append(parts, "Crash-looping (RestartCount rising): "+strings.Join(crashLooping, ", "))
 	}
 	if len(stuckStarting) > 0 {
 		parts = append(parts, "Stuck starting: "+strings.Join(stuckStarting, ", "))
@@ -201,11 +263,12 @@ func main() {
 	ticker := time.NewTicker(time.Duration(frequency) * time.Second)
 	defer ticker.Stop()
 
+	detector := newCrashLoopDetector()
 	runCheck := func() {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		healthy, message := checkHealth(ctx, dockerClient)
+		healthy, message := checkHealth(ctx, dockerClient, detector)
 		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message, int(time.Since(start).Seconds()))
 		writeHeartbeat()
 	}
