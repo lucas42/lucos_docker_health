@@ -139,6 +139,11 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 	var crashLooping []string
 	present := make(map[string]struct{})
 	for _, c := range result.Items {
+		// Seed from the list, not after inspect succeeds — a transient inspect
+		// failure (e.g. context.DeadlineExceeded under daemon load, which a real
+		// crash loop can itself cause) must not look like container removal and
+		// prune this container's accumulating crash-loop streak.
+		present[c.ID] = struct{}{}
 		inspectCtx, inspectCancel := context.WithTimeout(ctx, 5*time.Second)
 		info, err := dockerClient.ContainerInspect(inspectCtx, c.ID, client.ContainerInspectOptions{})
 		inspectCancel()
@@ -155,7 +160,6 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 			// No healthcheck configured — skip
 			continue
 		}
-		present[c.ID] = struct{}{}
 		name := c.ID[:12]
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
