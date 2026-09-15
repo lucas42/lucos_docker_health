@@ -1,6 +1,6 @@
 module lucos_docker_health
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/containerd/errdefs v1.0.0
@@ -26,5 +26,5 @@ require (
 	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
