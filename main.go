@@ -135,7 +135,47 @@ func (d *crashLoopDetector) prune(present map[string]struct{}) {
 	}
 }
 
-func checkHealth(ctx context.Context, dockerClient *client.Client, detector *crashLoopDetector) (bool, string) {
+// stuckPausedPolls is how many consecutive polls must see a container paused
+// before it's flagged; three (≥2 min) clears lucos_backups' 120s quiesce watchdog.
+const stuckPausedPolls = 3
+
+// pausedDetector counts each container's consecutive paused polls, so a
+// container left paused (e.g. by a failed backup quiesce) is still reported
+// once synthetic "unhealthy" statuses are ignored (lucas42/lucos_docker_health#117).
+type pausedDetector struct {
+	streak map[string]int
+}
+
+func newPausedDetector() *pausedDetector {
+	return &pausedDetector{streak: make(map[string]int)}
+}
+
+// observe records whether containerID is paused this poll and reports whether
+// it has now been paused for stuckPausedPolls consecutive polls.
+func (d *pausedDetector) observe(containerID string, paused bool) bool {
+	if !paused {
+		delete(d.streak, containerID)
+		return false
+	}
+	d.streak[containerID]++
+	return d.streak[containerID] >= stuckPausedPolls
+}
+
+func (d *pausedDetector) prune(present map[string]struct{}) {
+	for id := range d.streak {
+		if _, ok := present[id]; !ok {
+			delete(d.streak, id)
+		}
+	}
+}
+
+// countsAsUnhealthy ignores the "unhealthy" Docker sets on a paused container
+// (and keeps for one interval after unpause) without any probe having failed.
+func countsAsUnhealthy(status string, failingStreak int) bool {
+	return status == "unhealthy" && failingStreak > 0
+}
+
+func checkHealth(ctx context.Context, dockerClient *client.Client, detector *crashLoopDetector, paused *pausedDetector) (bool, string) {
 	log.Printf("Listing containers...")
 	listStart := time.Now()
 	result, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{})
@@ -147,6 +187,7 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 	var unhealthy []string
 	var stuckStarting []string
 	var crashLooping []string
+	var stuckPaused []string
 	present := make(map[string]struct{})
 	for _, c := range result.Items {
 		// Seed from the list, not after inspect succeeds — a transient inspect
@@ -166,20 +207,26 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 			log.Printf("Warning: failed to inspect container %s: %v", c.ID[:12], err)
 			continue
 		}
-		if info.Container.State.Health == nil || info.Container.State.Health.Status == "none" {
-			// No healthcheck configured — skip
-			continue
-		}
 		name := c.ID[:12]
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		// Checked before the healthcheck skip, so it covers containers without one.
+		if paused.observe(c.ID, info.Container.State.Paused) {
+			stuckPaused = append(stuckPaused, name)
+		}
+		if info.Container.State.Health == nil || info.Container.State.Health.Status == "none" {
+			// No healthcheck configured — skip
+			continue
 		}
 		if detector.observe(c.ID, info.Container.RestartCount) {
 			crashLooping = append(crashLooping, name)
 		}
 		switch info.Container.State.Health.Status {
 		case "unhealthy":
-			unhealthy = append(unhealthy, name)
+			if countsAsUnhealthy(string(info.Container.State.Health.Status), info.Container.State.Health.FailingStreak) {
+				unhealthy = append(unhealthy, name)
+			}
 		case "starting":
 			startedAt, err := time.Parse(time.RFC3339Nano, info.Container.State.StartedAt)
 			if err != nil {
@@ -192,6 +239,7 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 		}
 	}
 	detector.prune(present)
+	paused.prune(present)
 
 	var parts []string
 	if len(unhealthy) > 0 {
@@ -202,6 +250,9 @@ func checkHealth(ctx context.Context, dockerClient *client.Client, detector *cra
 	}
 	if len(stuckStarting) > 0 {
 		parts = append(parts, "Stuck starting: "+strings.Join(stuckStarting, ", "))
+	}
+	if len(stuckPaused) > 0 {
+		parts = append(parts, "Stuck paused: "+strings.Join(stuckPaused, ", "))
 	}
 	if len(parts) > 0 {
 		return false, strings.Join(parts, ". ")
@@ -274,11 +325,12 @@ func main() {
 	defer ticker.Stop()
 
 	detector := newCrashLoopDetector()
+	pausedDet := newPausedDetector()
 	runCheck := func() {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		healthy, message := checkHealth(ctx, dockerClient, detector)
+		healthy, message := checkHealth(ctx, dockerClient, detector, pausedDet)
 		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message, int(time.Since(start).Seconds()))
 		writeHeartbeat()
 	}
