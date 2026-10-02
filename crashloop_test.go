@@ -31,6 +31,26 @@ func TestCrashLoopDetector(t *testing.T) {
 			polls:   []int{1, 2, 2, 3, 4},
 			flagged: []bool{false, false, false, false, true},
 		},
+		{
+			name:    "a flagged container stays flagged across a single flat poll (#122)",
+			polls:   []int{5, 6, 7, 7, 8},
+			flagged: []bool{false, false, true, true, true},
+		},
+		{
+			name:    "a flagged container stays flagged across two flat polls",
+			polls:   []int{5, 6, 7, 7, 7, 8, 8},
+			flagged: []bool{false, false, true, true, true, true, true},
+		},
+		{
+			name:    "a flagged container clears after three consecutive flat polls",
+			polls:   []int{5, 6, 7, 7, 7, 7, 7},
+			flagged: []bool{false, false, true, true, true, false, false},
+		},
+		{
+			name:    "after clearing, re-entry again needs two consecutive rises",
+			polls:   []int{5, 6, 7, 7, 7, 7, 8, 8, 9, 10},
+			flagged: []bool{false, false, true, true, true, false, false, false, false, true},
+		},
 	}
 
 	for _, tt := range tests {
