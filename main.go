@@ -83,9 +83,15 @@ const stuckStartingThreshold = 5 * time.Minute
 // or a one-off crash-and-recover (bumps the count once).
 const crashLoopStreakThreshold = 2
 
+// crashLoopExitFlatPolls is how many consecutive polls with a flat RestartCount
+// clear a flagged container, so restart backoff gaps don't drop the flag.
+const crashLoopExitFlatPolls = 3
+
 type restartState struct {
 	lastCount    int
 	risingStreak int
+	flatStreak   int
+	flagged      bool
 }
 
 // crashLoopDetector tracks each container's RestartCount across polls.
@@ -107,12 +113,16 @@ func newCrashLoopDetector() *crashLoopDetector {
 // whether it should be considered crash-looping.
 func (d *crashLoopDetector) observe(containerID string, restartCount int) bool {
 	prev, seen := d.state[containerID]
-	streak := 0
+	next := restartState{lastCount: restartCount}
 	if seen && restartCount > prev.lastCount {
-		streak = prev.risingStreak + 1
+		next.risingStreak = prev.risingStreak + 1
+	} else if seen {
+		next.flatStreak = prev.flatStreak + 1
 	}
-	d.state[containerID] = restartState{lastCount: restartCount, risingStreak: streak}
-	return streak >= crashLoopStreakThreshold
+	next.flagged = next.risingStreak >= crashLoopStreakThreshold ||
+		(prev.flagged && next.flatStreak < crashLoopExitFlatPolls)
+	d.state[containerID] = next
+	return next.flagged
 }
 
 // prune drops state for containers not seen in the current poll, so the map
