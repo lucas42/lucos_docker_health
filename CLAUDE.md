@@ -14,7 +14,7 @@ Go. Single binary, no CGO (`CGO_ENABLED=0`), suitable for a scratch/distroless i
 
 Push model: the binary polls Docker, then POSTs to `SCHEDULE_TRACKER_ENDPOINT` with a JSON payload containing `system`, `frequency`, and `status` (`"success"` or `"error"`). No inbound ports. No state persisted.
 
-Containers without a configured healthcheck are ignored entirely.
+Containers without a configured healthcheck are ignored, except for the "Stuck paused" check (paused on 3 consecutive polls), which covers every container. An `unhealthy` status with `FailingStreak` 0 is not counted: Docker sets it on a paused container, and keeps it for one healthcheck interval after unpause, without any probe having failed (#117).
 
 ## Docker socket
 
@@ -62,7 +62,7 @@ This is a known, accepted limitation — a deadlock-without-exit failure mode is
 
 ## Tests
 
-`crashloop_test.go` covers the crash-loop detector's state machine (`go test ./...`), run in CI via a `test` job. The rest of the binary is small and straightforward; coverage there is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
+`crashloop_test.go` and `paused_test.go` cover the crash-loop and stuck-paused detectors' state machines and the `FailingStreak` rule (`go test ./...`), run in CI via a `test` job. The rest of the binary is small and straightforward; coverage there is provided by CI build verification and production monitoring (stale-check via schedule_tracker).
 
 ## Architectural reviews
 
