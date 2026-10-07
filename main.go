@@ -175,10 +175,32 @@ func countsAsUnhealthy(status string, failingStreak int) bool {
 	return status == "unhealthy" && failingStreak > 0
 }
 
-func checkHealth(ctx context.Context, dockerClient *client.Client, detector *crashLoopDetector, paused *pausedDetector) (bool, string) {
+// daemonConnLostPolls is how many consecutive polls must fail to reach the
+// Docker daemon before the process exits so `restart: always` re-resolves the
+// socket bind mount (a daemon restart leaves it pinned to a deleted inode).
+const daemonConnLostPolls = 3
+
+type daemonConnTracker struct {
+	streak int
+}
+
+// observe records the outcome of a container list and reports whether the
+// daemon has been unreachable for daemonConnLostPolls consecutive polls.
+// Only connection failures count; timeouts and other errors reset the streak.
+func (t *daemonConnTracker) observe(err error) bool {
+	if err != nil && client.IsErrConnectionFailed(err) {
+		t.streak++
+	} else {
+		t.streak = 0
+	}
+	return t.streak >= daemonConnLostPolls
+}
+
+func checkHealth(ctx context.Context, dockerClient *client.Client, detector *crashLoopDetector, paused *pausedDetector, conn *daemonConnTracker) (bool, string) {
 	log.Printf("Listing containers...")
 	listStart := time.Now()
 	result, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{})
+	conn.observe(err)
 	if err != nil {
 		return false, fmt.Sprintf("Failed to list containers: %v", err)
 	}
@@ -326,13 +348,18 @@ func main() {
 
 	detector := newCrashLoopDetector()
 	pausedDet := newPausedDetector()
+	conn := &daemonConnTracker{}
 	runCheck := func() {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		healthy, message := checkHealth(ctx, dockerClient, detector, pausedDet)
+		healthy, message := checkHealth(ctx, dockerClient, detector, pausedDet, conn)
 		reportStatus(httpClient, scheduleTrackerURL, system, jobName, frequency, healthy, message, int(time.Since(start).Seconds()))
 		writeHeartbeat()
+		if conn.streak >= daemonConnLostPolls {
+			log.Printf("Docker daemon unreachable for %d consecutive checks; exiting so the container restarts and re-establishes the socket mount", conn.streak)
+			os.Exit(1)
+		}
 	}
 
 	// Run once immediately, then on each tick
